@@ -2,9 +2,9 @@
 Telegram bot for finding educational materials and scientific articles
 # 🎓 EduFinderBot
 
-[![Python](https://www.python.org/downloads/)]
-[![Telegram Desktop](https://desktop.telegram.org/)]
-[![Telegram Android](https://telegram.org/android?setln=ru&ysclid=mgzdlmah7o238445997)]
+[[Python](https://www.python.org/downloads/)]
+[[Telegram Desktop](https://desktop.telegram.org/)]
+[[Telegram Android](https://telegram.org/android?setln=ru&ysclid=mgzdlmah7o238445997)]
 
 **Интеллектуальный Telegram-бот для поиска образовательных материалов**
 
