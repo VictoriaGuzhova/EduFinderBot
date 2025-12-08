@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import sqlite3
 import xml.etree.ElementTree as ET
 from config import token
+import re
 
 bot = telebot.TeleBot(token)
 
@@ -13,6 +14,13 @@ user_states = {}
 
 # Кэш
 cache = {}  # общий кэш: { "Python": [результаты] }
+
+
+def make_short_key(query: str, max_len: int = 20) -> str:
+    ascii_only = re.sub(r'[^A-Za-z0-9]', '', query)
+    if not ascii_only:
+        ascii_only = 'q'
+    return ascii_only[:max_len]
 
 
 # Инициализация бд
@@ -168,7 +176,8 @@ def search_wikipedia(query, chat_id):
     except Exception as e:
         return None, f"⚠️ Ошибка: {e}"
     results = parse_wikipedia_response(data)
-    cache[query] = results
+    short_key = make_short_key(query)
+    cache[short_key] = results
     add_search(chat_id, query, "wikipedia")
     return results, None
 
@@ -212,17 +221,19 @@ def search_arxiv(query, chat_id):
     except Exception as e:
         return None, f"⚠️ Ошибка: {e}"
     results = parse_arxiv_response(xml_text)
-    cache[key] = results
+    short_key = make_short_key(query)
+    cache[f"arxiv:{short_key}"] = results
     add_search(chat_id, query, "arxiv")
     return results, None
 
 
 # Вывод результатов
-def display_results(chat_id, query, results, source):
+def display_results(chat_id, query, results, source, i=None):
     if not results:
-        bot.send_message(chat_id, "❌ По вашему запросу ничего не найдено.")
+        bot.send_message(chat_id, "❌ По вашему запросу ничего не найдено.", reply_markup=main_menu())
         return
     max_cnt = len(results)
+    last_results = {}
     cnt = 0
     for i, res in enumerate(results, start=1):
         cnt = cnt + 1
@@ -235,7 +246,8 @@ def display_results(chat_id, query, results, source):
             f"Ссылка: {res['link']}\n"
         )
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton('Добавить в избранное', callback_data=f"add_fav_{source}_{i}_{query}"))
+        short_key = make_short_key(query)
+        markup.add(types.InlineKeyboardButton('Добавить в избранное', callback_data = f"add_fav_{source}_{i}_{short_key}"))
         bot.send_message(chat_id, text, reply_markup=markup)
         if cnt == max_cnt:
             bot.send_message(chat_id, f"✅ Найдено {len(results)} материалов ({source}) по запросу: \"{query}\"", reply_markup=main_menu())
@@ -319,15 +331,15 @@ def handle_user_query_arxiv(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("add_fav_"))
 def add_to_favorites(call):
     chat_id = call.message.chat.id
-    parts = call.data.split("_")
+    parts = call.data.split("_", 4)
     source = parts[2]  # 'wikipedia' или 'arxiv'
     item_index = int(parts[3]) - 1
-    query = "_".join(parts[4:])
+    short_key = parts[4]
     if source == "arxiv":
-        key = f"arxiv:{query}"
-        results = cache.get(key, [])
+        key = f"arxiv:{short_key}"
     else:
-        results = cache.get(query, [])
+        key = short_key
+    results = cache.get(key, [])
     if 0 <= item_index < len(results):
         res = results[item_index]
         add_favorite(chat_id, res, source=source)
