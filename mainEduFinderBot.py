@@ -6,7 +6,6 @@ import sqlite3
 import xml.etree.ElementTree as ET
 from config import token
 
-
 bot = telebot.TeleBot(token)
 
 # Состояния пользователей
@@ -209,8 +208,10 @@ def display_results(chat_id, query, results, source):
     if not results:
         bot.send_message(chat_id, "❌ По вашему запросу ничего не найдено.")
         return
-    bot.send_message(chat_id, f"✅ Найдено {len(results)} материалов ({source}) по запросу: *\"{query}\"*", parse_mode="Markdown")
+    max_cnt = len(results)
+    cnt = 0
     for i, res in enumerate(results, start=1):
+        cnt = cnt + 1
         text = (
             f"{i}\n"
             f"Название: {res['title']}\n"
@@ -221,13 +222,14 @@ def display_results(chat_id, query, results, source):
         )
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton('Добавить в избранное', callback_data=f"add_fav_{source}_{i}_{query}"))
-        bot.send_message(chat_id, text, reply_markup=main_menu())
-
+        bot.send_message(chat_id, text, reply_markup=markup)
+        if cnt == max_cnt:
+            bot.send_message(chat_id, f"✅ Найдено {len(results)} материалов ({source}) по запросу: \"{query}\"", reply_markup=main_menu())
 
 # Главное меню
 def main_menu():
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.row('Старт', '🔍Новый поиск')
+    keyboard.row('🔍Новый поиск')
     keyboard.row('❤️Избранное', '🗞История поиска')
     keyboard.row('⚙️Настройки', '❓Помощь')
     return keyboard
@@ -316,8 +318,14 @@ def favorites(message):
         lines = []
         for i, (title, authors, year, abstract, link, source) in enumerate(fav_list, start=1):
             lines.append(f"{i}. [{source}] {title} — {authors}, {year}\n{abstract}\n{link}")
-        text = "⭐ Избранное:\n\n" + "\n\n".join(lines)
-        bot.send_message(message.chat.id, text)
+
+        text = "⭐️ Избранное:\n\n" + "\n\n".join(lines)
+
+        if len(text) > 4096:
+            for x in range(0, len(text), 4096):
+                bot.send_message(message.chat.id, text[x:x + 4096])
+        else:
+            bot.send_message(message.chat.id, text)
 
 # История поиска
 @bot.message_handler(func=lambda message: message.text == '🗞История поиска')
@@ -327,12 +335,15 @@ def history(message):
     if not user_history:
         bot.send_message(chat_id, "🕗 История поиска\n\nИстория пока пуста.")
     else:
-        text = "🕗 Ваша история поиска:\n\n" + "\n".join(
-            f"{i+1}. {q} — [{src}] — {ts}"
-            for i, (q, src, ts) in enumerate(user_history)
-        )
-        bot.send_message(message.chat.id, text)
+        header = "🕗 Ваша история поиска:\n\n"
+        lines = [
+            f"{i}. {q} — [{src}] — {ts}"
+            for i, (q, src, ts) in enumerate(user_history, start=1)
+        ]
+        text = header + "\n".join(lines)
 
+        for x in range(0, len(text), 4096):
+            bot.send_message(message.chat.id, text[x:x + 4096])
 # Настройки
 @bot.message_handler(func=lambda message: message.text == '⚙️Настройки')
 def settings(message):
@@ -442,3 +453,4 @@ def cmd_update_history(message):
 # Запуск бота
 if __name__ == "__main__":
     bot.polling(none_stop=True)
+
