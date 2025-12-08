@@ -14,6 +14,7 @@ user_states = {}
 # Кэш
 cache = {}  # общий кэш: { "Python": [результаты] }
 
+
 # Инициализация бд
 def init_db():
     conn = sqlite3.connect("users.db")
@@ -60,7 +61,9 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 init_db()
+
 
 # Функции работы с бд
 def add_user(chat_id, username):
@@ -70,12 +73,14 @@ def add_user(chat_id, username):
     conn.commit()
     conn.close()
 
+
 def add_search(chat_id, query, source):
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
     cursor.execute("INSERT INTO search_history (chat_id, query, source) VALUES (?, ?, ?)", (chat_id, query, source))
     conn.commit()
     conn.close()
+
 
 def get_history(chat_id, limit=10):
     conn = sqlite3.connect("users.db")
@@ -94,12 +99,14 @@ def get_history(chat_id, limit=10):
         adjusted.append((query, source, ts_adj))
     return adjusted
 
+
 def clear_user_history(chat_id):
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
     cursor.execute("DELETE FROM search_history WHERE chat_id=?", (chat_id,))
     conn.commit()
     conn.close()
+
 
 def add_favorite(chat_id, item, source):
     conn = sqlite3.connect("users.db")
@@ -111,6 +118,7 @@ def add_favorite(chat_id, item, source):
     conn.commit()
     conn.close()
 
+
 def get_favorites(chat_id):
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
@@ -119,12 +127,14 @@ def get_favorites(chat_id):
     conn.close()
     return rows
 
+
 def clear_user_favorites(chat_id):
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
     cursor.execute("DELETE FROM favorites WHERE chat_id=?", (chat_id,))
     conn.commit()
     conn.close()
+
 
 # Поиск в википедии
 def parse_wikipedia_response(data):
@@ -143,6 +153,7 @@ def parse_wikipedia_response(data):
         })
     return results
 
+
 def search_wikipedia(query, chat_id):
     if query in cache:
         add_search(chat_id, query, "wikipedia")
@@ -160,6 +171,7 @@ def search_wikipedia(query, chat_id):
     cache[query] = results
     add_search(chat_id, query, "wikipedia")
     return results, None
+
 
 # Поиск в arxiv
 def parse_arxiv_response(xml_text):
@@ -184,6 +196,7 @@ def parse_arxiv_response(xml_text):
         results.append({"title":title,"authors":", ".join(authors) if authors else "arXiv authors","year":year,"abstract":abstract,"link":link})
     return results
 
+
 def search_arxiv(query, chat_id):
     key = f"arxiv:{query}"
     if key in cache:
@@ -202,6 +215,7 @@ def search_arxiv(query, chat_id):
     cache[key] = results
     add_search(chat_id, query, "arxiv")
     return results, None
+
 
 # Вывод результатов
 def display_results(chat_id, query, results, source):
@@ -226,6 +240,7 @@ def display_results(chat_id, query, results, source):
         if cnt == max_cnt:
             bot.send_message(chat_id, f"✅ Найдено {len(results)} материалов ({source}) по запросу: \"{query}\"", reply_markup=main_menu())
 
+
 # Главное меню
 def main_menu():
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -234,15 +249,18 @@ def main_menu():
     keyboard.row('⚙️Настройки', '❓Помощь')
     return keyboard
 
+
 # Команды и обработчики
-@bot.message_handler(func=lambda message: message.text == 'Старт')
+@bot.message_handler(commands=['start'])
 def start(message):
     add_user(message.chat.id, message.from_user.username or "")
     bot.send_message(message.chat.id, "👋 Добро пожаловать в EDU FINDER BOT!", reply_markup=main_menu())
 
+
 @bot.message_handler(func=lambda message: message.text == '❓Помощь')
 def about(message):
     bot.send_message(message.chat.id, 'ℹ️ Нажми 🔍Новый поиск, выбери источник (Википедия или arXiv), а затем введи запрос.')
+
 
 @bot.message_handler(func=lambda message: message.text == '🔍Новый поиск')
 def search_command(message):
@@ -251,6 +269,7 @@ def search_command(message):
     markup.add(types.InlineKeyboardButton("📖 Википедия", callback_data="choose_wikipedia"))
     markup.add(types.InlineKeyboardButton("🧪 arXiv", callback_data="choose_arxiv"))
     bot.send_message(chat_id, "Где будем искать материалы?", reply_markup=markup)
+
 
 @bot.callback_query_handler(func=lambda call: call.data in ["choose_wikipedia", "choose_arxiv"])
 def choose_source(call):
@@ -263,10 +282,14 @@ def choose_source(call):
         bot.send_message(chat_id, "🧪 Введите ключевые слова для поиска на arXiv…")
     bot.answer_callback_query(call.id)
 
+
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id) == 'awaiting_query_wikipedia')
 def handle_user_query_wikipedia(message):
     chat_id = message.chat.id
     query = message.text.strip()
+    if len(query) > 100:
+        bot.send_message(message.chat.id, "Слишком длинное название (максимум 100 символов)", reply_markup=main_menu())
+        return
     bot.send_message(chat_id, "🔍 Идёт поиск материалов в Википедии…")
     results, error = search_wikipedia(query, chat_id)
     if error:
@@ -275,10 +298,14 @@ def handle_user_query_wikipedia(message):
         display_results(chat_id, query, results, source="wikipedia")
     user_states.pop(chat_id, None)
 
+
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id) == 'awaiting_query_arxiv')
 def handle_user_query_arxiv(message):
     chat_id = message.chat.id
     query = message.text.strip()
+    if len(query) > 100:
+        bot.send_message(message.chat.id, "Слишком длинное название (максимум 100 символов)", reply_markup=main_menu())
+        return
     bot.send_message(chat_id, "🔎 Идёт поиск материалов на arXiv…")
     results, error = search_arxiv(query, chat_id)
     if error:
@@ -286,6 +313,7 @@ def handle_user_query_arxiv(message):
     else:
         display_results(chat_id, query, results, source="arxiv")
     user_states.pop(chat_id, None)
+
 
 # Добавление в избранное
 @bot.callback_query_handler(func=lambda call: call.data.startswith("add_fav_"))
@@ -308,6 +336,7 @@ def add_to_favorites(call):
     else:
         bot.answer_callback_query(call.id, "Не удалось добавить", show_alert=True)
 
+
 # Избранное
 @bot.message_handler(func=lambda message: message.text == '❤️Избранное')
 def favorites(message):
@@ -327,6 +356,7 @@ def favorites(message):
         else:
             bot.send_message(message.chat.id, text)
 
+
 # История поиска
 @bot.message_handler(func=lambda message: message.text == '🗞История поиска')
 def history(message):
@@ -344,6 +374,8 @@ def history(message):
 
         for x in range(0, len(text), 4096):
             bot.send_message(message.chat.id, text[x:x + 4096])
+
+
 # Настройки
 @bot.message_handler(func=lambda message: message.text == '⚙️Настройки')
 def settings(message):
@@ -354,6 +386,7 @@ def settings(message):
     markup.add(clear_fav_btn)
     bot.send_message(message.chat.id, "⚙️ Настройки\n\nВыберите действие:", reply_markup=markup)
 
+
 @bot.callback_query_handler(func=lambda call: call.data == "clear_cache")
 def clear_cache(call):
     chat_id = call.message.chat.id
@@ -361,12 +394,14 @@ def clear_cache(call):
     bot.answer_callback_query(call.id, "История очищена ✅")
     bot.send_message(chat_id, "🧹 Ваша история поиска успешно очищена.")
 
+
 @bot.callback_query_handler(func=lambda call: call.data == "clear_fav")
 def clear_fav(call):
     chat_id = call.message.chat.id
     clear_user_favorites(chat_id)
     bot.answer_callback_query(call.id, "Избранное очищено ✅")
     bot.send_message(chat_id, "🗑️ Ваше избранное успешно очищено.")
+
 
 # Дополнительные команды для CRUD
 @bot.message_handler(commands=['update_user'])
@@ -383,6 +418,7 @@ def cmd_update_user(message):
     conn.close()
     bot.send_message(message.chat.id, f"✅ Имя пользователя обновлено: {new_username}")
 
+
 @bot.message_handler(commands=['delete_user'])
 def cmd_delete_user(message):
     conn = sqlite3.connect("users.db")
@@ -391,6 +427,7 @@ def cmd_delete_user(message):
     conn.commit()
     conn.close()
     bot.send_message(message.chat.id, "🗑️ Профиль пользователя удалён из БД.")
+
 
 @bot.message_handler(commands=['delete_fav'])
 def cmd_delete_fav(message):
@@ -405,6 +442,7 @@ def cmd_delete_fav(message):
     conn.commit()
     conn.close()
     bot.send_message(message.chat.id, f"🗑️ Избранный материал удалён (ID: {entry_id}).")
+
 
 @bot.message_handler(commands=['update_fav'])
 def cmd_update_fav(message):
@@ -421,6 +459,7 @@ def cmd_update_fav(message):
     conn.close()
     bot.send_message(message.chat.id, f"✅ Избранное обновлено (ID: {entry_id}) → {new_title}")
 
+
 @bot.message_handler(commands=['delete_history'])
 def cmd_delete_history(message):
     parts = message.text.split(maxsplit=1)
@@ -434,6 +473,7 @@ def cmd_delete_history(message):
     conn.commit()
     conn.close()
     bot.send_message(message.chat.id, f"🗑️ Запись истории удалена (ID: {entry_id}).")
+
 
 @bot.message_handler(commands=['update_history'])
 def cmd_update_history(message):
@@ -449,6 +489,7 @@ def cmd_update_history(message):
     conn.commit()
     conn.close()
     bot.send_message(message.chat.id, f"✅ История обновлена (ID: {entry_id}) → {new_query}")
+
 
 # Запуск бота
 if __name__ == "__main__":
