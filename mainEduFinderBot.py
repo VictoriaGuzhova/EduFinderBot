@@ -23,6 +23,32 @@ def make_short_key(query: str, max_len: int = 20) -> str:
     return ascii_only[:max_len]
 
 
+MAX_ABSTRACT_LEN = 700
+MAX_TG_MESSAGE_LEN = 4096
+
+
+def shorten(text, max_len=MAX_ABSTRACT_LEN):
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[:max_len].rsplit(" ", 1)[0] + "…"
+
+
+def split_message(text, max_len=MAX_TG_MESSAGE_LEN):
+    chunks = []
+    while text:
+        if len(text) <= max_len:
+            chunks.append(text)
+            break
+        cut = text.rfind("\n", 0, max_len)
+        if cut == -1:
+            cut = max_len
+        chunks.append(text[:cut])
+        text = text[cut:].lstrip()
+    return chunks
+
+
 # Инициализация бд
 def init_db():
     conn = sqlite3.connect("users.db")
@@ -207,7 +233,8 @@ def parse_arxiv_response(xml_text):
 
 
 def search_arxiv(query, chat_id):
-    key = f"arxiv:{query}"
+    short_key = make_short_key(query)
+    key = f"arxiv:{short_key}"
     if key in cache:
         add_search(chat_id, query, "arxiv")
         return cache[key], None
@@ -215,7 +242,7 @@ def search_arxiv(query, chat_id):
     params = {"search_query":f"all:{query}","start":0,"max_results":5,"sortBy":"relevance","sortOrder":"descending"}
     headers = {"User-Agent":"EduFinderBot/1.0"}
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=8)
+        response = requests.get(url, params=params, headers=headers, timeout=16)
         response.raise_for_status()
         xml_text = response.text
     except Exception as e:
@@ -230,27 +257,39 @@ def search_arxiv(query, chat_id):
 # Вывод результатов
 def display_results(chat_id, query, results, source, i=None):
     if not results:
-        bot.send_message(chat_id, "❌ По вашему запросу ничего не найдено.", reply_markup=main_menu())
+        bot.send_message( chat_id,"❌ По вашему запросу ничего не найдено.",reply_markup=main_menu())
         return
-    max_cnt = len(results)
-    last_results = {}
-    cnt = 0
+
     for i, res in enumerate(results, start=1):
-        cnt = cnt + 1
+        abstract_short = shorten(res.get("abstract", ""))
+
         text = (
             f"{i}\n"
             f"Название: {res['title']}\n"
             f"Автор(ы): {res['authors']}\n"
             f"Год: {res['year']}\n"
-            f"Аннотация: {res['abstract']}\n"
+            f"Аннотация: {abstract_short}\n"
             f"Ссылка: {res['link']}\n"
         )
+
         markup = types.InlineKeyboardMarkup()
         short_key = make_short_key(query)
-        markup.add(types.InlineKeyboardButton('Добавить в избранное', callback_data = f"add_fav_{source}_{i}_{short_key}"))
-        bot.send_message(chat_id, text, reply_markup=markup)
-        if cnt == max_cnt:
-            bot.send_message(chat_id, f"✅ Найдено {len(results)} материалов ({source}) по запросу: \"{query}\"", reply_markup=main_menu())
+        markup.add(
+            types.InlineKeyboardButton(
+                "Добавить в избранное",
+                callback_data=f"add_fav_{source}_{i}_{short_key}"
+            )
+        )
+
+        chunks = split_message(text)
+        for j, chunk in enumerate(chunks):
+            # Кнопки — только к последнему куску сообщения
+            if j == len(chunks) - 1:
+                bot.send_message(chat_id, chunk, reply_markup=markup)
+            else:
+                bot.send_message(chat_id, chunk)
+
+    bot.send_message(chat_id, f"✅ Найдено {len(results)} материалов ({source}) по запросу: \"{query}\"",reply_markup=main_menu())
 
 
 # Главное меню
@@ -506,4 +545,3 @@ def cmd_update_history(message):
 # Запуск бота
 if __name__ == "__main__":
     bot.polling(none_stop=True)
-
